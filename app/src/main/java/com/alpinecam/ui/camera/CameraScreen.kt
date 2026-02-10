@@ -1,6 +1,7 @@
 package com.alpinecam.ui.camera
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.content.ContentValues
 import android.content.Context
 import android.net.Uri
@@ -46,7 +47,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.compose.LocalLifecycleOwner
+@Suppress("DEPRECATION")
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -353,7 +355,7 @@ private fun takePhoto(
     )
 }
 
-@androidx.annotation.OptIn(androidx.camera.video.ExperimentalPersistentRecording::class)
+@SuppressLint("MissingPermission")
 private fun startRecording(
     context: Context,
     videoCapture: VideoCapture<Recorder>,
