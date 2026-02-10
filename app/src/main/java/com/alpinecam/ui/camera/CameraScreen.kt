@@ -25,13 +25,11 @@ import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -124,6 +122,7 @@ private fun CameraContent(
     var activeRecording by remember { mutableStateOf<Recording?>(null) }
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
+    var previewView by remember { mutableStateOf<PreviewView?>(null) }
 
     // Recording timer
     LaunchedEffect(state.isRecording) {
@@ -144,35 +143,51 @@ private fun CameraContent(
         camera?.cameraControl?.setZoomRatio(state.zoomRatio)
     }
 
+    // Rebind camera only when camera selector or flash changes, and never during recording
+    LaunchedEffect(state.isBackCamera, state.flashMode) {
+        if (state.isRecording) return@LaunchedEffect
+        val provider = cameraProvider ?: return@LaunchedEffect
+        val pv = previewView ?: return@LaunchedEffect
+        bindCamera(
+            provider = provider,
+            lifecycleOwner = lifecycleOwner,
+            previewView = pv,
+            isBackCamera = state.isBackCamera,
+            flashMode = state.flashMode,
+            onImageCaptureReady = { imageCapture = it },
+            onVideoCaptureReady = { videoCapture = it },
+            onCameraReady = { camera = it },
+        )
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         // Camera Preview
         AndroidView(
             factory = { ctx ->
-                val previewView = PreviewView(ctx).apply {
+                PreviewView(ctx).apply {
                     layoutParams = ViewGroup.LayoutParams(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     )
                     scaleType = PreviewView.ScaleType.FILL_CENTER
+                }.also { pv ->
+                    previewView = pv
+                    val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
+                    cameraProviderFuture.addListener({
+                        val provider = cameraProviderFuture.get()
+                        cameraProvider = provider
+                        bindCamera(
+                            provider = provider,
+                            lifecycleOwner = lifecycleOwner,
+                            previewView = pv,
+                            isBackCamera = state.isBackCamera,
+                            flashMode = state.flashMode,
+                            onImageCaptureReady = { imageCapture = it },
+                            onVideoCaptureReady = { videoCapture = it },
+                            onCameraReady = { camera = it },
+                        )
+                    }, ContextCompat.getMainExecutor(ctx))
                 }
-
-                val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
-                cameraProviderFuture.addListener({
-                    val provider = cameraProviderFuture.get()
-                    cameraProvider = provider
-                    bindCamera(
-                        provider = provider,
-                        lifecycleOwner = lifecycleOwner,
-                        previewView = previewView,
-                        isBackCamera = state.isBackCamera,
-                        flashMode = state.flashMode,
-                        onImageCaptureReady = { imageCapture = it },
-                        onVideoCaptureReady = { videoCapture = it },
-                        onCameraReady = { camera = it },
-                    )
-                }, ContextCompat.getMainExecutor(ctx))
-
-                previewView
             },
             modifier = Modifier
                 .fillMaxSize()
@@ -182,20 +197,6 @@ private fun CameraContent(
                         viewModel.setZoomRatio(newZoom)
                     }
                 },
-            update = { previewView ->
-                cameraProvider?.let { provider ->
-                    bindCamera(
-                        provider = provider,
-                        lifecycleOwner = lifecycleOwner,
-                        previewView = previewView,
-                        isBackCamera = state.isBackCamera,
-                        flashMode = state.flashMode,
-                        onImageCaptureReady = { imageCapture = it },
-                        onVideoCaptureReady = { videoCapture = it },
-                        onCameraReady = { camera = it },
-                    )
-                }
-            },
         )
 
         // Top bar
@@ -227,9 +228,9 @@ private fun CameraContent(
                     }
                     CameraMode.VIDEO -> {
                         if (state.isRecording) {
+                            // Only call stop — let the Finalize event handle state cleanup
                             activeRecording?.stop()
                             activeRecording = null
-                            viewModel.setRecording(false)
                         } else {
                             videoCapture?.let { capture ->
                                 activeRecording = startRecording(
@@ -242,6 +243,9 @@ private fun CameraContent(
                                     },
                                     onRecordingStarted = {
                                         viewModel.setRecording(true)
+                                    },
+                                    onRecordingError = {
+                                        viewModel.setRecording(false)
                                     },
                                 )
                             }
@@ -292,7 +296,7 @@ private fun bindCamera(
             .build()
 
         val recorder = Recorder.Builder()
-            .setQualitySelector(QualitySelector.from(Quality.HIGHEST))
+            .setQualitySelector(QualitySelector.from(Quality.FHD))
             .build()
         val vidCapture = VideoCapture.withOutput(recorder)
 
@@ -361,6 +365,7 @@ private fun startRecording(
     videoCapture: VideoCapture<Recorder>,
     onVideoSaved: (Uri) -> Unit,
     onRecordingStarted: () -> Unit,
+    onRecordingError: () -> Unit,
 ): Recording {
     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
     val contentValues = ContentValues().apply {
@@ -391,6 +396,7 @@ private fun startRecording(
                         Log.d(TAG, "Video saved: ${event.outputResults.outputUri}")
                     } else {
                         Log.e(TAG, "Video recording error: ${event.error}")
+                        onRecordingError()
                     }
                 }
             }
