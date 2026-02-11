@@ -64,6 +64,7 @@ private const val BUILD_ID = "v5-0211"  // Change this to verify builds
 fun CameraScreen(
     onGalleryClick: () -> Unit,
     onMediaCaptured: (Uri) -> Unit,
+    trainingSkierName: String? = null,
     viewModel: CameraViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsState()
@@ -95,12 +96,20 @@ fun CameraScreen(
         }
     }
 
+    // Auto-switch to video mode in training mode
+    LaunchedEffect(trainingSkierName) {
+        if (trainingSkierName != null && state.cameraMode != CameraMode.VIDEO) {
+            viewModel.toggleCameraMode()
+        }
+    }
+
     if (hasCameraPermission) {
         CameraContent(
             state = state,
             viewModel = viewModel,
             onGalleryClick = onGalleryClick,
             onMediaCaptured = onMediaCaptured,
+            trainingSkierName = trainingSkierName,
         )
     } else {
         PermissionRequest()
@@ -130,6 +139,7 @@ private fun CameraContent(
     viewModel: CameraViewModel,
     onGalleryClick: () -> Unit,
     onMediaCaptured: (Uri) -> Unit,
+    trainingSkierName: String? = null,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -224,6 +234,21 @@ private fun CameraContent(
                     }
                 },
         )
+
+        // Skier name overlay (training mode)
+        trainingSkierName?.let { name ->
+            Text(
+                text = "Filmar: $name",
+                color = Color.White,
+                fontSize = 18.sp,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .statusBarsPadding()
+                    .padding(top = 56.dp)
+                    .background(Color.Black.copy(alpha = 0.5f))
+                    .padding(horizontal = 16.dp, vertical = 4.dp),
+            )
+        }
 
         // Top bar
         CameraTopBar(
