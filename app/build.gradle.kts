@@ -83,9 +83,6 @@ dependencies {
     implementation("androidx.camera:camera-view:$cameraxVersion")
     implementation("androidx.camera:camera-extensions:$cameraxVersion")
 
-    // Permissions
-    implementation("com.google.accompanist:accompanist-permissions:0.37.0")
-
     // Image loading
     implementation("io.coil-kt:coil-compose:2.7.0")
     implementation("io.coil-kt:coil-video:2.7.0")

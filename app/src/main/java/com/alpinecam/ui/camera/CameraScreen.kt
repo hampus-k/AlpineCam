@@ -10,6 +10,8 @@ import android.provider.MediaStore
 import android.util.Log
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -51,9 +53,6 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.google.accompanist.permissions.ExperimentalPermissionsApi
-import com.google.accompanist.permissions.isGranted
-import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -61,7 +60,6 @@ import java.util.Locale
 private const val TAG = "AlpineCam"
 private const val BUILD_ID = "v5-0211"  // Change this to verify builds
 
-@OptIn(ExperimentalPermissionsApi::class)
 @Composable
 fun CameraScreen(
     onGalleryClick: () -> Unit,
@@ -69,19 +67,35 @@ fun CameraScreen(
     viewModel: CameraViewModel = viewModel(),
 ) {
     val state by viewModel.state.collectAsState()
+    val context = LocalContext.current
 
-    val permissions = buildList {
-        add(Manifest.permission.CAMERA)
-        add(Manifest.permission.RECORD_AUDIO)
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CAMERA
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        )
     }
 
-    val permissionState = rememberMultiplePermissionsState(permissions)
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { permissions ->
+        hasCameraPermission = permissions[Manifest.permission.CAMERA] == true
+    }
 
     LaunchedEffect(Unit) {
-        permissionState.launchMultiplePermissionRequest()
+        if (!hasCameraPermission) {
+            permissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.CAMERA,
+                    Manifest.permission.RECORD_AUDIO
+                )
+            )
+        }
     }
 
-    if (permissionState.permissions.first { it.permission == Manifest.permission.CAMERA }.status.isGranted) {
+    if (hasCameraPermission) {
         CameraContent(
             state = state,
             viewModel = viewModel,
@@ -315,7 +329,7 @@ private fun bindCamera(
 
         val preview = Preview.Builder()
             .build()
-            .also { it.setSurfaceProvider(previewView.surfaceProvider) }
+            .also { it.surfaceProvider = previewView.surfaceProvider }
 
         val camera = when (cameraMode) {
             CameraMode.PHOTO -> {
