@@ -27,6 +27,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.Text
@@ -44,6 +45,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
@@ -57,6 +59,7 @@ import java.text.SimpleDateFormat
 import java.util.Locale
 
 private const val TAG = "AlpineCam"
+private const val BUILD_ID = "v5-0211"  // Change this to verify builds
 
 @OptIn(ExperimentalPermissionsApi::class)
 @Composable
@@ -123,6 +126,12 @@ private fun CameraContent(
     var cameraProvider by remember { mutableStateOf<ProcessCameraProvider?>(null) }
     var camera by remember { mutableStateOf<androidx.camera.core.Camera?>(null) }
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
+
+    // Show build ID on startup to verify correct version
+    LaunchedEffect(Unit) {
+        Log.d(TAG, "=== AlpineCam $BUILD_ID started ===")
+        Toast.makeText(context, "AlpineCam $BUILD_ID", Toast.LENGTH_SHORT).show()
+    }
 
     // Recording timer
     LaunchedEffect(state.isRecording) {
@@ -211,6 +220,17 @@ private fun CameraContent(
                 .statusBarsPadding(),
         )
 
+        // Build version label (bottom-left, small)
+        Text(
+            text = BUILD_ID,
+            color = Color.White.copy(alpha = 0.5f),
+            fontSize = 10.sp,
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .navigationBarsPadding()
+                .padding(start = 8.dp, bottom = 8.dp),
+        )
+
         // Bottom controls
         CameraBottomControls(
             state = state,
@@ -231,27 +251,34 @@ private fun CameraContent(
                     }
                     CameraMode.VIDEO -> {
                         if (state.isRecording) {
+                            Log.d(TAG, "Stopping recording... activeRecording=$activeRecording")
                             activeRecording?.stop()
                             activeRecording = null
                         } else {
+                            Log.d(TAG, "Starting recording... videoCapture=$videoCapture")
                             videoCapture?.let { capture ->
                                 activeRecording = startRecording(
                                     context = context,
                                     videoCapture = capture,
                                     onVideoSaved = { uri ->
+                                        Log.d(TAG, "onVideoSaved callback: $uri")
                                         viewModel.setLastCapturedUri(uri)
                                         viewModel.setRecording(false)
                                         onMediaCaptured(uri)
                                     },
                                     onRecordingStarted = {
+                                        Log.d(TAG, "onRecordingStarted callback")
                                         viewModel.setRecording(true)
                                     },
                                     onRecordingError = { errorMsg ->
+                                        Log.e(TAG, "onRecordingError callback: $errorMsg")
                                         viewModel.setRecording(false)
                                         Toast.makeText(context, "Recording failed: $errorMsg", Toast.LENGTH_LONG).show()
                                     },
                                 )
+                                Log.d(TAG, "startRecording returned: $activeRecording")
                             } ?: run {
+                                Log.e(TAG, "videoCapture is NULL! Cannot record.")
                                 Toast.makeText(context, "Camera not ready, try again", Toast.LENGTH_SHORT).show()
                             }
                         }
