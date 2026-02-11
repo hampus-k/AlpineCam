@@ -11,6 +11,7 @@ import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -48,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
@@ -143,8 +145,8 @@ private fun CameraContent(
         camera?.cameraControl?.setZoomRatio(state.zoomRatio)
     }
 
-    // Rebind camera only when camera selector or flash changes, and never during recording
-    LaunchedEffect(state.isBackCamera, state.flashMode) {
+    // Rebind camera when camera direction, flash, or mode changes — never during recording
+    LaunchedEffect(state.isBackCamera, state.flashMode, state.cameraMode) {
         if (state.isRecording) return@LaunchedEffect
         val provider = cameraProvider ?: return@LaunchedEffect
         val pv = previewView ?: return@LaunchedEffect
@@ -154,6 +156,7 @@ private fun CameraContent(
             previewView = pv,
             isBackCamera = state.isBackCamera,
             flashMode = state.flashMode,
+            cameraMode = state.cameraMode,
             onImageCaptureReady = { imageCapture = it },
             onVideoCaptureReady = { videoCapture = it },
             onCameraReady = { camera = it },
@@ -170,6 +173,7 @@ private fun CameraContent(
                         ViewGroup.LayoutParams.MATCH_PARENT,
                     )
                     scaleType = PreviewView.ScaleType.FILL_CENTER
+                    implementationMode = PreviewView.ImplementationMode.COMPATIBLE
                 }.also { pv ->
                     previewView = pv
                     val cameraProviderFuture = ProcessCameraProvider.getInstance(ctx)
@@ -182,6 +186,7 @@ private fun CameraContent(
                             previewView = pv,
                             isBackCamera = state.isBackCamera,
                             flashMode = state.flashMode,
+                            cameraMode = state.cameraMode,
                             onImageCaptureReady = { imageCapture = it },
                             onVideoCaptureReady = { videoCapture = it },
                             onCameraReady = { camera = it },
@@ -228,7 +233,6 @@ private fun CameraContent(
                     }
                     CameraMode.VIDEO -> {
                         if (state.isRecording) {
-                            // Only call stop — let the Finalize event handle state cleanup
                             activeRecording?.stop()
                             activeRecording = null
                         } else {
@@ -244,10 +248,13 @@ private fun CameraContent(
                                     onRecordingStarted = {
                                         viewModel.setRecording(true)
                                     },
-                                    onRecordingError = {
+                                    onRecordingError = { errorMsg ->
                                         viewModel.setRecording(false)
+                                        Toast.makeText(context, "Recording failed: $errorMsg", Toast.LENGTH_LONG).show()
                                     },
                                 )
+                            } ?: run {
+                                Toast.makeText(context, "Camera not ready, try again", Toast.LENGTH_SHORT).show()
                             }
                         }
                     }
@@ -263,10 +270,11 @@ private fun CameraContent(
 
 private fun bindCamera(
     provider: ProcessCameraProvider,
-    lifecycleOwner: androidx.lifecycle.LifecycleOwner,
+    lifecycleOwner: LifecycleOwner,
     previewView: PreviewView,
     isBackCamera: Boolean,
     flashMode: FlashMode,
+    cameraMode: CameraMode,
     onImageCaptureReady: (ImageCapture) -> Unit,
     onVideoCaptureReady: (VideoCapture<Recorder>) -> Unit,
     onCameraReady: (androidx.camera.core.Camera) -> Unit,
@@ -284,33 +292,35 @@ private fun bindCamera(
             .build()
             .also { it.setSurfaceProvider(previewView.surfaceProvider) }
 
-        val imgCapture = ImageCapture.Builder()
-            .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
-            .setFlashMode(
-                when (flashMode) {
-                    FlashMode.OFF -> ImageCapture.FLASH_MODE_OFF
-                    FlashMode.ON -> ImageCapture.FLASH_MODE_ON
-                    FlashMode.AUTO -> ImageCapture.FLASH_MODE_AUTO
-                },
-            )
-            .build()
+        val camera = when (cameraMode) {
+            CameraMode.PHOTO -> {
+                val imgCapture = ImageCapture.Builder()
+                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MAXIMIZE_QUALITY)
+                    .setFlashMode(
+                        when (flashMode) {
+                            FlashMode.OFF -> ImageCapture.FLASH_MODE_OFF
+                            FlashMode.ON -> ImageCapture.FLASH_MODE_ON
+                            FlashMode.AUTO -> ImageCapture.FLASH_MODE_AUTO
+                        },
+                    )
+                    .build()
 
-        val recorder = Recorder.Builder()
-            .setQualitySelector(QualitySelector.from(Quality.FHD))
-            .build()
-        val vidCapture = VideoCapture.withOutput(recorder)
+                onImageCaptureReady(imgCapture)
+                provider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imgCapture)
+            }
+            CameraMode.VIDEO -> {
+                val recorder = Recorder.Builder()
+                    .setQualitySelector(QualitySelector.from(Quality.FHD))
+                    .build()
+                val vidCapture = VideoCapture.withOutput(recorder)
 
-        val camera = provider.bindToLifecycle(
-            lifecycleOwner,
-            cameraSelector,
-            preview,
-            imgCapture,
-            vidCapture,
-        )
+                onVideoCaptureReady(vidCapture)
+                provider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, vidCapture)
+            }
+        }
 
-        onImageCaptureReady(imgCapture)
-        onVideoCaptureReady(vidCapture)
         onCameraReady(camera)
+        Log.d(TAG, "Camera bound successfully in $cameraMode mode")
     } catch (e: Exception) {
         Log.e(TAG, "Camera bind failed", e)
     }
@@ -354,6 +364,7 @@ private fun takePhoto(
 
             override fun onError(exception: ImageCaptureException) {
                 Log.e(TAG, "Photo capture failed: ${exception.message}", exception)
+                Toast.makeText(context, "Photo failed: ${exception.message}", Toast.LENGTH_SHORT).show()
             }
         },
     )
@@ -365,7 +376,7 @@ private fun startRecording(
     videoCapture: VideoCapture<Recorder>,
     onVideoSaved: (Uri) -> Unit,
     onRecordingStarted: () -> Unit,
-    onRecordingError: () -> Unit,
+    onRecordingError: (String) -> Unit,
 ): Recording {
     val timestamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(System.currentTimeMillis())
     val contentValues = ContentValues().apply {
@@ -381,6 +392,8 @@ private fun startRecording(
         MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
     ).setContentValues(contentValues).build()
 
+    Log.d(TAG, "Preparing recording...")
+
     return videoCapture.output
         .prepareRecording(context, outputOptions)
         .withAudioEnabled()
@@ -390,13 +403,19 @@ private fun startRecording(
                     onRecordingStarted()
                     Log.d(TAG, "Recording started")
                 }
+                is VideoRecordEvent.Status -> {
+                    Log.d(TAG, "Recording status: ${event.recordingStats.numBytesRecorded} bytes")
+                }
                 is VideoRecordEvent.Finalize -> {
                     if (!event.hasError()) {
-                        event.outputResults.outputUri.let { onVideoSaved(it) }
-                        Log.d(TAG, "Video saved: ${event.outputResults.outputUri}")
+                        val uri = event.outputResults.outputUri
+                        Log.d(TAG, "Video saved: $uri")
+                        Toast.makeText(context, "Video saved!", Toast.LENGTH_SHORT).show()
+                        onVideoSaved(uri)
                     } else {
-                        Log.e(TAG, "Video recording error: ${event.error}")
-                        onRecordingError()
+                        val errorMsg = "Error code: ${event.error}, cause: ${event.cause?.message}"
+                        Log.e(TAG, "Video recording error: $errorMsg")
+                        onRecordingError(errorMsg)
                     }
                 }
             }
