@@ -1,0 +1,142 @@
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Header */
+.app-header {
+  background: var(--card-bg);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.app-header__inner {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0.85rem 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.app-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.app-header__icon {
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.app-header__title {
+  font-size: 1.25rem;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+/* Week navigation */
+.week-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.week-nav__btn {
+  background: none;
+  border: 2px solid var(--border);
+  border-radius: 8px;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.3rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  line-height: 1;
+  padding: 0;
+}
+
+.week-nav__btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.week-nav__label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 80px;
+  gap: 0.15rem;
+}
+
+.week-nav__week {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text);
+}
+
+.week-nav__today {
+  background: none;
+  border: none;
+  font-size: 0.72rem;
+  color: var(--accent);
+  cursor: pointer;
+  padding: 0;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.week-nav__today:hover {
+  color: var(--accent-hover);
+}
+
+/* Main content */
+.app-main {
+  flex: 1;
+  max-width: 900px;
+  margin: 0 auto;
+  width: 100%;
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Week grid */
+.week-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0.75rem;
+}
+
+@media (max-width: 700px) {
+  .week-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 420px) {
+  .week-grid {
+    grid-template-columns: 1fr;
+  }
+  .app-header__inner {
+    flex-wrap: wrap;
+  }
+}
+
+/* Summary */
+.week-summary {
+  text-align: center;
+  font-size: 0.85rem;
+  color: var(--text-subtle);
+}
